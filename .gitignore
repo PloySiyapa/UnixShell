@@ -1,0 +1,10 @@
+# Ignore compiled binaries
+output
+*.out
+*.o
+*.exe
+
+# Ignore backup or temporary files
+*.swp
+*.bak
+*.tmp
