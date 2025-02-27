@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #define MAX_TOKENS 64
 
@@ -33,13 +34,24 @@ void builtInCMD(char command[], char *args[], int count, char outputFile[]){
         printf("argument %d: %s\n", i + 1, args[i]);
     }
 
-    if (strcmp(command,"exit") == 0) { //if user types exit, exit shell
-        free(command);
-        exit(0);
+    if (strcmp(command,"exit") == 0) { //Builtin Command Exit
+        if(count != 0){
+            printf("exit error: more than 0 Arguments\n");
+        }
+        else{
+            free(command);
+            exit(0);
+        }
         }
 
-    else if (strcmp(command,"cd")==0){
-        printf("cd Builtin Command: %s \n", command);
+    else if (strcmp(command,"cd")==0){ //Builtin Command cd
+        if(count != 1){ //checks if there is only 1 argument else fail
+            printf("cd Error: no arguments or more than 1 argument was passed\n");
+            return;
+        }
+        if(chdir(args[0]) != 0){ //runs chdir() to change directory if 0 isn't returned directory didn't change, print error
+            printf("chdir failed \n");
+        }
     }
 
     else if (strcmp(command,"path")==0){ 
@@ -154,8 +166,6 @@ int main() {
 
         splitInput(line);
     }
-
-
 
     return 0;
 }
