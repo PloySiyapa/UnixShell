@@ -6,6 +6,24 @@
 
 #define MAX_TOKENS 64
 
+// Global variable to store the search path
+char *paths[MAX_TOKENS];  // Default search path
+int path_count = 0; // Number of paths in the search path
+
+void updatePath(char *args[], int count) {
+    // Clear the existing path
+    for (int i = 0; i < path_count; i++) {
+        free(paths[i]);
+    }
+
+    path_count = 0; // Reset path count
+
+    // Add new directories to the path
+    for (int i = 0; i < count; i ++) {
+        paths[i] = strdup(args[i]); // store the new path
+        path_count++;
+    }
+}
 
 void removeWhitespace(char *str) { //this function removes whitespaces to make string comparison more consistent
     int start = 0;
@@ -27,12 +45,9 @@ void removeWhitespace(char *str) { //this function removes whitespaces to make s
 }
 
 void builtInCMD(char command[], char *args[], int count, char outputFile[]){
-    //placeholder to ensure arguments and output file is passed properly
+    //placeholder to ensure output file is passed properly
     if (outputFile != NULL){
         printf("Output file: %s\n", outputFile);}
-    for (int i = 0; i < count; i++) {
-        printf("argument %d: %s\n", i + 1, args[i]);
-    }
 
     if (strcmp(command,"exit") == 0) { //Builtin Command Exit
         if(count != 0){
@@ -55,7 +70,7 @@ void builtInCMD(char command[], char *args[], int count, char outputFile[]){
     }
 
     else if (strcmp(command,"path")==0){ 
-        printf("Path Builtin Command: %s \n", command); //this is a placeholder for when user enters command path
+        updatePath(args, count); //update the path with new directories
     }
 }
 
@@ -143,6 +158,10 @@ void splitInput(char line[]){
 }
 
 int main() {
+
+    paths[0] = strdup("/bin"); //initial shell path should contain one directory
+    path_count = 1;
+
     char *line = NULL; //pointer for storing input
     size_t len =0; //Buffer size
     ssize_t read; 
