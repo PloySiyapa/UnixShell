@@ -3,8 +3,13 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #define MAX_TOKENS 64
+
+// Global variable to store the search path
+char *paths[MAX_TOKENS] = {"/bin", NULL};  // Default search path
+int path_count = 1; // Number of paths in the search path
 
 
 void removeWhitespace(char *str) { //this function removes whitespaces to make string comparison more consistent
@@ -26,6 +31,22 @@ void removeWhitespace(char *str) { //this function removes whitespaces to make s
     str[i] = '\0'; //adds null-terminate to the end of the char array
 }
 
+// Function to clear existing path
+void updatePath(char *args[], int count) {
+    // Clear the existing path
+    for (int i = 0; i < path_count; i++) {
+        free(paths[i]);
+    }
+
+    path_count = 0; // Reset path count
+
+    // Add new directories to the path
+    for (int i = 0; i < count; i ++) {
+        paths[i] = strdup(args[i]); // store the new path
+        path_count++;
+    }
+}
+
 void builtInCMD(char command[], char *args[], int count, char outputFile[]){
     //placeholder to ensure arguments and output file is passed properly
     if (outputFile != NULL){
@@ -42,31 +63,54 @@ void builtInCMD(char command[], char *args[], int count, char outputFile[]){
             free(command);
             exit(0);
         }
-        }
-
-    else if (strcmp(command,"cd")==0){ //Builtin Command cd
-        if(count != 1){ //checks if there is only 1 argument else fail
-            printf("cd Error: no arguments or more than 1 argument was passed\n");
-            return;
-        }
-        if(chdir(args[0]) != 0){ //runs chdir() to change directory if 0 isn't returned directory didn't change, print error
+        } else if (strcmp(command,"cd") == 0){ //Builtin Command cd
+            if(count != 1){ //checks if there is only 1 argument else fail
+                printf("cd Error: no arguments or more than 1 argument was passed\n");
+                return;
+            }
+            if(chdir(args[0]) != 0){ //runs chdir() to change directory if 0 isn't returned directory didn't change, print error
             printf("chdir failed \n");
+            }
+        } else if (strcmp(command, "path") == 0) { 
+            updatePath(args, count); //update the path with new directories
         }
-    }
-
-    else if (strcmp(command,"path")==0){ 
-        printf("Path Builtin Command: %s \n", command); //this is a placeholder for when user enters command path
-    }
 }
 
 void executeCMD(char command[], char *args[], int count, char outputFile[]){
-    //placeholder execute program commands, will search path to see if program is in directory if so execute it
-    if (outputFile != NULL){
-        printf("Output file: %s\n", outputFile);}
-    for (int i = 0; i < count; i++) {
-        printf("argument %d: %s\n", i + 1, args[i]);
+    pid_t pid = fork(); //forks a child process
+    
+    if (pid < 0) {
+        printf("Fork failed\n");
+        return;
+    } else if (pid == 0) { // Child process
+        // Handling redirection}
+        if (outputFile != NULL) {
+            int fd = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd < 0) {
+                printf("Failed to open output file\n");
+                exit(1);
+            }
+            dup2(fd, STDOUT_FILENO); // Redirect stdout to the file
+            dup2(fd, STDERR_FILENO); // Redirect stderr to the file
+            close(fd);
+        }
+
+        // Search for the command in the path
+        char commandPath[256];
+        for (int i = 0; i < path_count; i++) {
+            snprintf(commandPath, sizeof(commandPath), "%s/%s", paths[i], command);
+            if (access(commandPath, X_OK) == 0) { // Check if the command is executable
+                execv(commandPath, args); // Execute the command
+                // If execv returns, it means there was an error
+                printf("execv failed");
+                exit(1);
+            }
+        }
+        printf("Command not found: %s\n", command);
+        exit(1); // Exit child process
+    } else { // Parent process
+    wait(NULL); // Wait for child process to finish
     }
-    printf("Execute Command: %s\n", command);
 }
 
 void processCommand(char *commandString){
@@ -79,15 +123,15 @@ void processCommand(char *commandString){
 
     if(strsep(&redirect, ">") != NULL){
        if(redirect != NULL){ //redirection error detection
-           removeWhitespace(redirect);
+        removeWhitespace(redirect);
            //checks if > operator is called more than once and if there is multiple output files, if so raise error
-           if (strchr(redirect, ' ') != NULL || strchr(redirect, '>') != NULL) {
+        if (strchr(redirect, ' ') != NULL || strchr(redirect, '>') != NULL) {
                 printf("Redirection ERROR\n");
                 return; //future kill child once parrellel is implemented
             printf("Redirection ERROR\n");
             return; //future kill child once parrellel is implemented
+            }
         }
-       }
     }
     removeWhitespace(rest);
     //checks if there are arguments indicated by " ", if true store first portion of strsep to command, and the rest of the lines would be arguments
@@ -101,10 +145,9 @@ void processCommand(char *commandString){
 
                 if(arg_count < MAX_TOKENS){
                     args[arg_count++] = token;
-                }
-                else{printf("error");break;}
-                }
-            }}
+                } else{printf("error");break;}
+            }
+        }}
     else
         command=rest; //if no argumemts detected set command to the rest of the line
     
