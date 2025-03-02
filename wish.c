@@ -3,6 +3,8 @@
 #include <string.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <sys/wait.h>  // Add for waitpid
+#include <fcntl.h>     // Add for file operations
 
 #define MAX_TOKENS 64
 
@@ -45,43 +47,77 @@ void removeWhitespace(char *str) { //this function removes whitespaces to make s
 }
 
 void builtInCMD(char command[], char *args[], int count, char outputFile[]){
-    //placeholder to ensure output file is passed properly
-    if (outputFile != NULL){
-        printf("Output file: %s\n", outputFile);}
-
+    char error_message[30] = "An error has occurred\n";
+    
     if (strcmp(command,"exit") == 0) { //Builtin Command Exit
         if(count != 0){
-            printf("exit error: more than 0 Arguments\n");
+            write(STDERR_FILENO, error_message, strlen(error_message));
         }
         else{
-            free(command);
             exit(0);
         }
-        }
-
+    }
     else if (strcmp(command,"cd")==0){ //Builtin Command cd
         if(count != 1){ //checks if there is only 1 argument else fail
-            printf("cd Error: no arguments or more than 1 argument was passed\n");
+            write(STDERR_FILENO, error_message, strlen(error_message));
             return;
         }
-        if(chdir(args[0]) != 0){ //runs chdir() to change directory if 0 isn't returned directory didn't change, print error
-            printf("chdir failed \n");
+        if(chdir(args[0]) != 0){ //runs chdir() to change directory
+            write(STDERR_FILENO, error_message, strlen(error_message));
         }
     }
-
     else if (strcmp(command,"path")==0){ 
         updatePath(args, count); //update the path with new directories
     }
 }
 
 void executeCMD(char command[], char *args[], int count, char outputFile[]){
-    //placeholder execute program commands, will search path to see if program is in directory if so execute it
-    if (outputFile != NULL){
-        printf("Output file: %s\n", outputFile);}
-    for (int i = 0; i < count; i++) {
-        printf("argument %d: %s\n", i + 1, args[i]);
+    char commandPath[256];
+    int found = 0;
+    
+    // Search for command in paths
+    for (int i = 0; i < path_count; i++) {
+        snprintf(commandPath, sizeof(commandPath), "%s/%s", paths[i], command);
+        if (access(commandPath, X_OK) == 0) {
+            found = 1;
+            break;
+        }
     }
-    printf("Execute Command: %s\n", command);
+    
+    if (!found) {
+        char error_message[30] = "An error has occurred\n";
+        write(STDERR_FILENO, error_message, strlen(error_message));
+        return;
+    }
+    
+    // Handle redirection if specified
+    if (outputFile != NULL) {
+        int fd = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        if (fd < 0) {
+            char error_message[30] = "An error has occurred\n";
+            write(STDERR_FILENO, error_message, strlen(error_message));
+            return;
+        }
+        dup2(fd, STDOUT_FILENO); // Redirect stdout
+        dup2(fd, STDERR_FILENO); // Also redirect stderr as per spec
+        close(fd);
+    }
+    
+    // Prepare arguments for execv
+    char *execArgs[count + 2];
+    execArgs[0] = commandPath;  // Use full path instead of just command
+    for (int j = 0; j < count; j++) {
+        execArgs[j + 1] = args[j];
+    }
+    execArgs[count + 1] = NULL;  // NULL terminate the args array
+    
+    // Execute the command - no need to fork as we're already in a child process
+    execv(commandPath, execArgs);
+    
+    // If execv returns, it failed
+    char error_message[30] = "An error has occurred\n";
+    write(STDERR_FILENO, error_message, strlen(error_message));
+    // No need to exit, the caller (executeCommands) will handle it
 }
 
 void processCommand(char *commandString){
@@ -97,11 +133,10 @@ void processCommand(char *commandString){
            removeWhitespace(redirect);
            //checks if > operator is called more than once and if there is multiple output files, if so raise error
            if (strchr(redirect, ' ') != NULL || strchr(redirect, '>') != NULL) {
-                printf("Redirection ERROR\n");
+                char error_message[30] = "An error has occurred\n";
+                write(STDERR_FILENO, error_message, strlen(error_message));
                 return; //future kill child once parrellel is implemented
-            printf("Redirection ERROR\n");
-            return; //future kill child once parrellel is implemented
-        }
+            }
        }
     }
     removeWhitespace(rest);
@@ -131,11 +166,73 @@ void processCommand(char *commandString){
         executeCMD(command, args, arg_count, redirect);}
 }
 
-void executeCommands(char *commands[], int count){ //this function will execute all the commands that the user inputs
-    //currently execute a command one at a time need to change it so it execute parallel
+void executeCommands(char *commands[], int count){
+    pid_t pids[count];
+    int child_count = 0;
+    
+    // Process each command
     for (int i = 0; i < count; i++) {
-        processCommand(commands[i]);
-}}
+        char *cmd_copy = strdup(commands[i]);
+        if (!cmd_copy) {
+            char error_message[30] = "An error has occurred\n";
+            write(STDERR_FILENO, error_message, strlen(error_message));
+            continue;
+        }
+        
+        // Extract the command name to check if it's a built-in
+        char *rest = cmd_copy;
+        char *redirect_check = strdup(cmd_copy);
+        char *command = NULL;
+        
+        // Handle potential redirection in the command string
+        strsep(&redirect_check, ">");
+        
+        // Extract the command name
+        removeWhitespace(rest);
+        command = strsep(&rest, " ");
+        
+        if (command) {
+            removeWhitespace(command);
+            
+            // Check if it's a built-in command
+            if (strcmp(command, "exit") == 0 || 
+                strcmp(command, "cd") == 0 || 
+                strcmp(command, "path") == 0) {
+                // Execute built-in command in the parent process
+                processCommand(commands[i]);
+                free(cmd_copy);
+                free(redirect_check);
+                continue;
+            }
+        }
+        
+        free(cmd_copy);
+        free(redirect_check);
+        
+        // For non-built-in commands, fork and execute
+        pids[child_count] = fork();
+        
+        if (pids[child_count] < 0) {
+            char error_message[30] = "An error has occurred\n";
+            write(STDERR_FILENO, error_message, strlen(error_message));
+            continue;
+        }
+        
+        if (pids[child_count] == 0) {  // Child process
+            processCommand(commands[i]);
+            exit(0);  // Exit after processing command
+        }
+        
+        child_count++;
+    }
+    
+    // Parent waits for all children to finish
+    for (int i = 0; i < child_count; i++) {
+        if (pids[i] > 0) {
+            waitpid(pids[i], NULL, 0);
+        }
+    }
+}
 
 void splitInput(char line[]){
     char *commands[MAX_TOKENS]; //array that will store commands
