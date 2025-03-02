@@ -47,11 +47,13 @@ void removeWhitespace(char *str) { //this function removes whitespaces to make s
 }
 
 void builtInCMD(char command[], char *args[], int count, char outputFile[]){
-    char error_message[30] = "An error has occurred\n";
+    const char *exit_error_message = "exit ERROR: Cannot have any arguments\n";
+    const char *cd_error_message = "cd ERROR: Must have only one argument\n";
+    const char *chdir_error_message = "chdir ERROR: chdir failed\n";
     
     if (strcmp(command,"exit") == 0) { //Builtin Command Exit
         if(count != 0){
-            write(STDERR_FILENO, error_message, strlen(error_message));
+            write(STDERR_FILENO, exit_error_message, strlen(exit_error_message));
         }
         else{
             exit(0);
@@ -59,11 +61,11 @@ void builtInCMD(char command[], char *args[], int count, char outputFile[]){
     }
     else if (strcmp(command,"cd")==0){ //Builtin Command cd
         if(count != 1){ //checks if there is only 1 argument else fail
-            write(STDERR_FILENO, error_message, strlen(error_message));
+            write(STDERR_FILENO, cd_error_message, strlen(cd_error_message));
             return;
         }
         if(chdir(args[0]) != 0){ //runs chdir() to change directory
-            write(STDERR_FILENO, error_message, strlen(error_message));
+            write(STDERR_FILENO, chdir_error_message, strlen(chdir_error_message));
         }
     }
     else if (strcmp(command,"path")==0){ 
@@ -133,8 +135,8 @@ void processCommand(char *commandString){
            removeWhitespace(redirect);
            //checks if > operator is called more than once and if there is multiple output files, if so raise error
            if (strchr(redirect, ' ') != NULL || strchr(redirect, '>') != NULL) {
-                char error_message[30] = "An error has occurred\n";
-                write(STDERR_FILENO, error_message, strlen(error_message));
+                const char *redirection_error_message = "Error: Multiple redirection operators or multiple output files to the right of redirection sign\n";
+                write(STDERR_FILENO, redirection_error_message, strlen(redirection_error_message));
                 return; //future kill child once parrellel is implemented
             }
        }
@@ -205,9 +207,8 @@ void executeCommands(char *commands[], int count){
                 continue;
             }
         }
-        
         free(cmd_copy);
-        free(redirect_check);
+        //free(redirect_check);
         
         // For non-built-in commands, fork and execute
         pids[child_count] = fork();
@@ -254,7 +255,7 @@ void splitInput(char line[]){
     executeCommands(commands, count);
 }
 
-int main() {
+int main(int argc, char *argv[]) {
 
     paths[0] = strdup("/bin"); //initial shell path should contain one directory
     path_count = 1;
@@ -262,24 +263,37 @@ int main() {
     char *line = NULL; //pointer for storing input
     size_t len =0; //Buffer size
     ssize_t read; 
+    FILE *input = stdin; // Default shell input to interactive mode instead of batch
 
+    // Check if running in batch mode
+    if (argc == 2) {
+        input = fopen(argv[1], "r");  // Open batch file
+        if (!input) {
+            const char *open_error_message = "Error opening file\n";
+            write(STDERR_FILENO, open_error_message, strlen(open_error_message));
+            exit(1);
+        }
+    } else if (argc > 2) {
+        fprintf(stderr, "Usage: %s [batch_file]\n", argv[0]);
+        exit(1);
+    }
 
     while(1){
         printf("wish> "); //Print Shell Prompt
-        read = getline(&line, &len, stdin);
+        fflush(stdout);
+
+        read = getline(&line, &len, input);
         if(read == -1){ //Incase shell hits the end of file or user does CTRL+D
-            printf("EOF or error detected. Exiting...\n"); //EOF or error detected
             free(line); //free memory before exiting
             exit(0);
         }
-
+        
         removeWhitespace(line);
         if(line[0] == '\0'){continue;} //skip rest of loop because user didn't input anything
         
         if (line[read - 1] == '\n') { //remove newline character from input
             line[read - 1] = '\0';
         }
-
         splitInput(line);
     }
 
