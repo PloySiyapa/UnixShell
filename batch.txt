@@ -19,6 +19,10 @@ cd s sadasdas
 cd 
 echo all cd cmds should have returned an error
 echo exit argument check
+echo redirection error checks
+echo cat >> output
+echo cat > output output2
+echo cat >
 exit 2 3
 echo should return error
 exit

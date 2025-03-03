@@ -105,9 +105,14 @@ void executeCMD(char command[], char *args[], int count, char outputFile[]){
     if (outputFile != NULL) {
         int fd = open(outputFile, O_WRONLY | O_CREAT | O_TRUNC, 0644);
         if (fd < 0) {
-            char error_message[30] = "An error has occurred\n";
-            write(STDERR_FILENO, error_message, strlen(error_message));
-            return;
+            if (batchmode==1){
+                const char *redirection_error_message = "Error: Couldn't open output file\n";
+                write(STDERR_FILENO, redirection_error_message, strlen(redirection_error_message));
+                getline(&line, &len, input );
+            }
+            const char *redirection_error_message = "Error: Couldn't open output file\n";
+            write(STDERR_FILENO, redirection_error_message, strlen(redirection_error_message));
+            exit(1);
         }
         dup2(fd, STDOUT_FILENO); // Redirect stdout
         dup2(fd, STDERR_FILENO); // Also redirect stderr as per spec
@@ -144,9 +149,14 @@ void processCommand(char *commandString){
            removeWhitespace(redirect);
            //checks if > operator is called more than once and if there is multiple output files, if so raise error
            if (strchr(redirect, ' ') != NULL || strchr(redirect, '>') != NULL) {
+                if (batchmode==1){
+                    const char *redirection_error_message = "Error: Multiple redirection operators or multiple output files to the right of redirection sign\n";
+                    write(STDERR_FILENO, redirection_error_message, strlen(redirection_error_message));
+                    getline(&line, &len, input );
+                }
                 const char *redirection_error_message = "Error: Multiple redirection operators or multiple output files to the right of redirection sign\n";
                 write(STDERR_FILENO, redirection_error_message, strlen(redirection_error_message));
-                return; //future kill child once parrellel is implemented
+                exit(1); 
             }
        }
     }
