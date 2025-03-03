@@ -1,0 +1,24 @@
+echo testing execute cmd
+echo testing redirect and output > output & date
+cat output
+echo testing to see if you can cd (builtin cmd) in to folder then back
+mkdir folder
+cd folder
+pwd
+cd ..
+pwd
+rmdir folder
+echo Testing Path's cmd
+path
+echo now that path is empty this should return an error
+path /bin
+echo test to see if you can now use cmds again
+echo will now test to see if arugment checks for cd works and chdir fail check
+cd s
+cd s sadasdas
+cd 
+echo all cd cmds should have returned an error
+echo exit argument check
+exit 2 3
+echo should return error
+exit

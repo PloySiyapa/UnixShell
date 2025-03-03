@@ -7,7 +7,11 @@
 #include <fcntl.h>     // Add for file operations
 
 #define MAX_TOKENS 64
-
+    
+int batchmode=0; //1 if in bath 0 if not
+char *line = NULL; //pointer for storing input
+size_t len =0; //Buffer size
+FILE *input;
 // Global variable to store the search path
 char *paths[MAX_TOKENS];  // Default search path
 int path_count = 0; // Number of paths in the search path
@@ -87,9 +91,14 @@ void executeCMD(char command[], char *args[], int count, char outputFile[]){
     }
     
     if (!found) {
+        if (batchmode==1){
+            char error_message[30] = "An error has occurred\n";
+            write(STDERR_FILENO, error_message, strlen(error_message));
+            getline(&line, &len, input );
+        }
         char error_message[30] = "An error has occurred\n";
         write(STDERR_FILENO, error_message, strlen(error_message));
-        return;
+        exit(1);
     }
     
     // Handle redirection if specified
@@ -208,11 +217,10 @@ void executeCommands(char *commands[], int count){
             }
         }
         free(cmd_copy);
-        //free(redirect_check);
-        
+
         // For non-built-in commands, fork and execute
         pids[child_count] = fork();
-        
+
         if (pids[child_count] < 0) {
             char error_message[30] = "An error has occurred\n";
             write(STDERR_FILENO, error_message, strlen(error_message));
@@ -261,7 +269,6 @@ int main(int argc, char *argv[]) {
     path_count = 1;
 
     char *line = NULL; //pointer for storing input
-    size_t len =0; //Buffer size
     ssize_t read; 
     FILE *input = stdin; // Default shell input to interactive mode instead of batch
 
@@ -273,6 +280,7 @@ int main(int argc, char *argv[]) {
             write(STDERR_FILENO, open_error_message, strlen(open_error_message));
             exit(1);
         }
+        batchmode = 1;
     } else if (argc > 2) {
         fprintf(stderr, "Usage: %s [batch_file]\n", argv[0]);
         exit(1);
@@ -294,6 +302,10 @@ int main(int argc, char *argv[]) {
         if (line[read - 1] == '\n') { //remove newline character from input
             line[read - 1] = '\0';
         }
+        if(batchmode == 1){
+            printf("%s\n", line);
+        }
+
         splitInput(line);
     }
 
