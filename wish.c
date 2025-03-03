@@ -114,12 +114,12 @@ void executeCMD(char command[], char *args[], int count, char outputFile[]){
     execArgs[count + 1] = NULL;  // NULL terminate the args array
     
     // Execute the command - no need to fork as we're already in a child process
-    execv(commandPath, execArgs);
-    
-    // If execv returns, it failed
-    char error_message[30] = "An error has occurred\n";
-    write(STDERR_FILENO, error_message, strlen(error_message));
-    // No need to exit, the caller (executeCommands) will handle it
+    if(execv(commandPath, execArgs) == -1){
+        // If execv returns, it failed
+        char error_message[30] = "An error has occurred\n";
+        write(STDERR_FILENO, error_message, strlen(error_message));
+        exit(1);
+    }
 }
 
 void processCommand(char *commandString){
